@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A personal machine-learning practice workspace, not an application. Each `.py` file at the root is a
 self-contained script working through textbook-style exercises, pulling datasets from
-`bit.ly/fish_csv_data` and `bit.ly/wine_csv_data`. There is no package, no entry point, no test suite,
-and no git repository.
+`bit.ly/fish_csv_data` and `bit.ly/wine_csv_data`. There is no entry point and no test suite, and no
+git repository. The one package is `dmodel/snowlib/`; everything else is a standalone script.
 
 `머신러닝.pdf` in the root is the textbook the user is reading — source material, not an input to any
 script. Don't parse, convert, or reformat it.
@@ -20,19 +20,26 @@ is here.
 ## Running
 
 Scripts must run under the project venv (Python 3.14, deps installed by pip; there is no
-`requirements.txt` — packages are numpy, pandas, matplotlib, scikit-learn, scipy):
+`requirements.txt`). Installed: numpy, pandas, matplotlib, scikit-learn, scipy for the textbook
+scripts; `torch` / `keras` / `torchvision` for deep learning; `opencv-python` and `ultralytics` for
+the computer-vision directories below.
 
 ```bash
 .venv/bin/python test3.py
 ```
 
-Two things to know before running anything:
+Three things to know before running anything:
 
 - **Every script fetches its CSV over the network on each run** (`pd.read_csv('https://bit.ly/...')`).
   No local copies are cached, so all scripts fail offline.
 - **`plt.show()` blocks.** `test2.py` ends on a blocking matplotlib window. When running
   non-interactively, set `MPLBACKEND=Agg` and swap `plt.show()` for `plt.savefig(...)` rather than
   letting the call hang.
+- **OpenCV sits at 4.14.0, not 5.x.** Installing `ultralytics` pulled `opencv-python` down from
+  5.0.0. This is not a hard pin — `ultralytics` only asks for `opencv-python!=4.13.0.90,>=4.7.0`,
+  which 5.x also satisfies; pip just resolved to 4.14.0. Everything the `opencv/` and `dmodel/`
+  scripts use works there (`FaceDetectorYN_create`, `HoughLinesP`, `getPerspectiveTransform`,
+  `dnn`) and `pip check` is clean, so leave it alone unless something actually needs 5.x.
 
 ## Deep learning scripts
 
@@ -62,12 +69,43 @@ PyTorch equivalent where it clarifies what Keras is doing — the user chose thi
 learn PyTorch too, not to hide it. Installed: `keras 3.15.1`, `torch 2.14.0`. MPS (Apple GPU) is
 available; CUDA is not.
 
-Boosting scripts are the slow ones — `test5.py` is the heaviest at about 9 seconds wall clock, the
-rest are near-instant. Nothing here needs a long timeout.
+**Runtimes split sharply.** Among the textbook scripts the boosting ones are the slow ones and
+`test5.py` is the heaviest at about 9 seconds; the rest are near-instant. The deep learning pair is
+different — `deep_ke/test12.py` takes about 8 minutes and `test13.py` about 3, so those two need a
+long timeout while nothing else does. MPS matters here: the Keras torch backend picks up MPS
+automatically (`DEFAULT_DEVICE` in `keras/src/backend/torch/core.py`) while the `deep_to/` scripts
+stay on CPU, which is why the two sides' timings are not comparable. `KERAS_TORCH_DEVICE=cpu` forces
+Keras onto the CPU for a fair measurement.
+
+## Computer-vision directories
+
+Separate from the textbook track (root + `deep_ke/`/`deep_to/`), several directories run real
+detection models. **They do not follow the textbook skeleton below** — no `train_test_split`, no
+train/test score pair. They load a pretrained model and look at what comes out.
+
+- `opencv/` — OpenCV itself: Hough transform, perspective warp, camera capture, YuNet face
+  detection. Images sit in the same directory, and paths are written **assuming you run from the
+  repo root** (`cv2.imread("opencv/rail.jpg")`).
+- `dmodel/` — the same task (detection) across different architectures and file formats, for
+  comparison: `ssd_caffe.py` (SSD + Caffe via `cv2.dnn`), `yunet_onnx.py` (YuNet + ONNX via
+  `FaceDetectorYN`), `yolo_ultra.py` (YOLO11 + PyTorch via ultralytics). `snowlib/` is the helper
+  package for the sticker demos.
+- `yolo/` — Ultralytics practice. `test01.py` inspects the raw output shape; `test02.py` reads
+  camera frames, runs inference, and sorts frames into `collect/auto` (confident, auto-labelled)
+  and `collect/review` (missed or low-confidence, for a human). `collect/` is generated output and
+  is safe to delete.
+- `yyolo/` — YOLOv3 in Darknet format read through `cv2.dnn`. `yolov3.weights` is 248 MB.
+- `cpp/` — empty.
+
+**These block on `cv2.imshow` + `cv2.waitKey`, not `plt.show()`.** To run one non-interactively,
+replace those with `cv2.imwrite`. The scripts that open a camera (`opencv/cam.py`, `yolo/test02.py`)
+need camera permission granted to the terminal on macOS; `yolo/test02.py` also honours `SHOW=0` and
+`SAVE_INTERVAL` from the environment so it can run headless.
 
 ## Shared script structure
 
-Every script repeats the same skeleton, so a change in one usually has a counterpart in the others:
+Every textbook script repeats the same skeleton, so a change in one usually has a counterpart in
+the others (the computer-vision directories above are exempt):
 
 1. `pd.read_csv` a remote dataset (`fish_csv_data` for multiclass species, `wine_csv_data` for wine)
 2. Slice feature columns into `data`/`*_input`, label column into `target`
@@ -105,8 +143,9 @@ Commented-out blocks (the `partial_fit` epoch loop and score plots in `test1.py`
 importance plot in `test3.py`) are toggled experiments — leave them in place rather than deleting
 them as dead code.
 
-**After adding or materially changing a script, update the matching row in `README.md`** — the study
-order table, and the results table if the run produced comparable numbers. Numbers in that table were
+**After adding or materially changing a textbook or deep learning script, update the matching row in
+`README.md`** — the study order table, and the results table if the run produced comparable numbers.
+The computer-vision directories are not indexed there; leave `README.md` alone when working in them. Numbers in that table were
 all measured under one condition (5-fold `cross_validate`, same split); if you add a row, measure it
 the same way rather than pasting a figure from a script that used a different fold count or setting.
 
